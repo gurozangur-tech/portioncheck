@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>PortionCheck Pro</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+:root {
+  --bg:#0d0d0d; --panel:#141414; --border:#1f1f1f; --text:#f5f5f5; --muted:#4a4a4a;
+  --ok:#00e676; --ok-dim:rgba(0,230,118,0.12);
+  --low:#ffab00; --low-dim:rgba(255,171,0,0.12);
+  --high:#ff3d3d; --high-dim:rgba(255,61,61,0.12);
+}
+html,body { height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; }
+
+/* ── SCREENS ── */
+.screen { display:none; height:100%; flex-direction:column; }
+.screen.active { display:flex; }
+
+/* ══ SETUP ══ */
+#setupScreen {
+  align-items:center; justify-content:center; padding:20px;
+  background:radial-gradient(ellipse at 30% 50%, rgba(0,230,118,0.07), transparent 60%), var(--bg);
+}
+.card { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:36px 32px; width:100%; max-width:460px; }
+.logo { font-family:'Bebas Neue',sans-serif; font-size:36px; letter-spacing:3px; color:var(--ok); margin-bottom:4px; }
+.tagline { font-size:12px; color:var(--muted); font-family:'DM Mono',monospace; letter-spacing:1px; margin-bottom:28px; }
+.step { margin-bottom:20px; }
+.step-label { font-size:10px; font-family:'DM Mono',monospace; letter-spacing:2px; color:var(--muted); text-transform:uppercase; margin-bottom:7px; display:flex; align-items:center; gap:7px; }
+.step-num { width:18px; height:18px; border-radius:50%; background:var(--ok); color:#000; font-size:9px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+input, select { width:100%; background:#1a1a1a; border:1px solid var(--border); border-radius:8px; color:var(--text); padding:11px 14px; font-family:'DM Mono',monospace; font-size:14px; -webkit-appearance:none; transition:border-color 0.15s; }
+input:focus, select:focus { outline:none; border-color:var(--ok); }
+input.err { border-color:var(--high); }
+.api-hint { font-size:11px; color:var(--muted); font-family:'DM Mono',monospace; margin-top:5px; line-height:1.5; }
+.launch-btn { width:100%; padding:13px; background:var(--ok); color:#000; border:none; border-radius:8px; font-family:'Bebas Neue',sans-serif; font-size:20px; letter-spacing:3px; cursor:pointer; margin-top:6px; transition:opacity 0.15s; }
+.launch-btn:disabled { opacity:0.4; cursor:not-allowed; }
+.err-box { background:var(--high-dim); border:1px solid var(--high); color:var(--high); border-radius:8px; padding:10px 14px; font-family:'DM Mono',monospace; font-size:12px; margin-top:10px; display:none; line-height:1.6; }
+
+/* ══ MAIN — layout responsive ══ */
+#mainScreen { flex-direction:row; }
+@media (max-width:700px) { #mainScreen { flex-direction:column; } }
+
+/* Camera */
+.cam-col { flex:1; position:relative; background:#000; overflow:hidden; min-height:0; }
+#video { width:100%; height:100%; object-fit:cover; display:block; }
+#canvas { display:none; }
+
+/* Overlays */
+.pill { position:absolute; display:flex; align-items:center; gap:6px; background:rgba(0,0,0,0.65); border:1px solid rgba(255,255,255,0.1); backdrop-filter:blur(8px); padding:5px 11px; border-radius:100px; font-family:'DM Mono',monospace; font-size:11px; letter-spacing:2px; color:rgba(255,255,255,0.5); }
+#livePill { top:14px; left:14px; }
+#analyzingPill { top:14px; right:14px; color:var(--ok); display:none; }
+#analyzingPill.show { display:flex; }
+.dot-live { width:7px; height:7px; border-radius:50%; background:var(--ok); animation:pulseDot 1.2s ease-in-out infinite; }
+.mini-spin { width:12px; height:12px; border:2px solid rgba(0,230,118,0.2); border-top-color:var(--ok); border-radius:50%; animation:spin 0.7s linear infinite; }
+
+.corner { position:absolute; width:42px; height:42px; transition:border-color 0.3s; opacity:0.7; }
+.corner.tl { top:14px; left:14px; border-top:3px solid; border-left:3px solid; }
+.corner.tr { top:14px; right:14px; border-top:3px solid; border-right:3px solid; }
+.corner.bl { bottom:195px; left:14px; border-bottom:3px solid; border-left:3px solid; }
+.corner.br { bottom:195px; right:14px; border-bottom:3px solid; border-right:3px solid; }
+@media (max-width:700px) { .corner.bl,.corner.br { bottom:175px; } }
+
+.scan-beam { position:absolute; left:0; right:0; height:3px; background:linear-gradient(90deg,transparent,currentColor,transparent); opacity:0.3; animation:scanMove 4s ease-in-out infinite; transition:color 0.3s; }
+@keyframes scanMove { 0%,100%{top:8%} 50%{top:calc(100% - 200px)} }
+@keyframes pulseDot { 50%{opacity:0.3;transform:scale(0.7)} }
+@keyframes spin { to{transform:rotate(360deg)} }
+@keyframes slideIn { from{opacity:0;transform:translateX(-6px)} }
+
+/* Big status */
+.big-status { position:absolute; bottom:0; left:0; right:0; padding:18px 24px; display:flex; align-items:center; gap:18px; border-top:5px solid; backdrop-filter:blur(24px) saturate(1.5); transition:background 0.3s, border-color 0.3s; }
+.bs-icon { font-size:56px; line-height:1; filter:drop-shadow(0 0 14px currentColor); transition:all 0.25s; }
+.bs-center { flex:1; min-width:0; }
+.bs-tag { font-family:'DM Mono',monospace; font-size:11px; letter-spacing:3px; opacity:0.6; margin-bottom:2px; }
+.bs-msg { font-family:'Bebas Neue',sans-serif; font-size:52px; line-height:1; letter-spacing:2px; transition:color 0.25s; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@media (max-width:700px) { .bs-msg { font-size:38px; } .bs-icon { font-size:44px; } }
+.bs-right { text-align:right; flex-shrink:0; }
+.bs-wlabel { font-family:'DM Mono',monospace; font-size:10px; letter-spacing:2px; opacity:0.5; margin-bottom:2px; }
+.bs-wval { font-family:'Bebas Neue',sans-serif; font-size:68px; line-height:1; letter-spacing:-2px; transition:color 0.25s; }
+.bs-wunit { font-size:24px; opacity:0.5; }
+.bs-conf { font-family:'DM Mono',monospace; font-size:10px; opacity:0.4; margin-top:2px; }
+@media (max-width:700px) { .bs-wval { font-size:48px; } }
+.cnt-bar { position:absolute; bottom:0; left:0; right:0; height:4px; background:rgba(255,255,255,0.05); }
+.cnt-fill { height:100%; background:var(--ok); transition:width 0.1s linear, background 0.3s; }
+
+/* Sidebar */
+.sidebar { width:310px; background:var(--panel); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto; flex-shrink:0; }
+@media (max-width:700px) { .sidebar { width:100%; border-left:none; border-top:1px solid var(--border); flex:1; } }
+.sb { padding:14px 16px; border-bottom:1px solid var(--border); }
+.sb-title { font-family:'DM Mono',monospace; font-size:9px; letter-spacing:3px; color:var(--muted); text-transform:uppercase; margin-bottom:10px; }
+
+/* AI status card */
+.ai-card { background:#1a1a1a; border:1px solid var(--border); border-radius:10px; padding:12px 14px; display:flex; align-items:center; gap:10px; }
+.ai-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; transition:background 0.3s, box-shadow 0.3s; }
+.ai-dot.ok { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+.ai-dot.err { background:var(--high); }
+.ai-dot.pending { background:var(--low); animation:pulseDot 1s ease-in-out infinite; }
+.ai-lbl { font-size:13px; font-weight:600; }
+.ai-sub { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); margin-top:2px; }
+.freq-row { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
+.freq-label { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); }
+.freq-val { font-family:'Bebas Neue',sans-serif; font-size:20px; color:var(--ok); }
+
+.sbtn { width:100%; margin-top:8px; padding:8px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:6px; color:rgba(255,255,255,0.5); font-family:'DM Mono',monospace; font-size:11px; letter-spacing:2px; cursor:pointer; transition:all 0.15s; }
+.sbtn:hover { background:rgba(255,255,255,0.08); color:var(--text); }
+.sbtn:disabled { opacity:0.3; cursor:not-allowed; }
+.sbtn.primary { background:rgba(0,230,118,0.1); border-color:var(--ok); color:var(--ok); }
+
+.prod-name { font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:2px; line-height:1; margin-bottom:3px; }
+.prod-target { font-family:'DM Mono',monospace; font-size:18px; color:var(--ok); }
+.prod-tol { font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); margin-top:2px; }
+
+/* Gauge */
+.gauge-track { height:40px; background:#1a1a1a; border-radius:8px; overflow:hidden; position:relative; border:1px solid var(--border); }
+.gauge-fill { position:absolute; left:0; top:0; bottom:0; border-radius:8px; transition:width 0.5s cubic-bezier(0.34,1.56,0.64,1), background 0.3s; }
+.gauge-zone { position:absolute; top:0; bottom:0; background:rgba(0,230,118,0.08); border-left:1px dashed rgba(0,230,118,0.3); border-right:1px dashed rgba(0,230,118,0.3); }
+.gauge-tick { position:absolute; top:0; bottom:0; width:2px; background:rgba(255,255,255,0.15); transform:translateX(-50%); }
+.gauge-axis { display:flex; justify-content:space-between; font-family:'DM Mono',monospace; font-size:9px; color:var(--muted); margin-top:3px; }
+
+.zone-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; margin-top:8px; }
+.zone-card { padding:7px 5px; border-radius:6px; border:1px solid; text-align:center; opacity:0.3; transition:opacity 0.3s, transform 0.3s; }
+.zone-card.active { opacity:1; transform:scale(1.04); }
+.zone-card.low { border-color:var(--low); background:var(--low-dim); color:var(--low); }
+.zone-card.ok  { border-color:var(--ok);  background:var(--ok-dim);  color:var(--ok); }
+.zone-card.high { border-color:var(--high); background:var(--high-dim); color:var(--high); }
+.zc-l { font-size:8px; font-family:'DM Mono',monospace; letter-spacing:1px; opacity:0.7; }
+.zc-v { font-family:'Bebas Neue',sans-serif; font-size:14px; margin-top:2px; }
+
+.stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+.stat-box { background:#1a1a1a; border:1px solid var(--border); border-radius:8px; padding:8px 10px; }
+.stat-l { font-size:9px; color:var(--muted); font-family:'DM Mono',monospace; letter-spacing:2px; margin-bottom:3px; }
+.stat-v { font-family:'Bebas Neue',sans-serif; font-size:28px; line-height:1; }
+.stat-v.ok{color:var(--ok)} .stat-v.low{color:var(--low)} .stat-v.high{color:var(--high)}
+
+.comp-bar-wrap { margin-top:8px; }
+.comp-label { display:flex; justify-content:space-between; font-family:'DM Mono',monospace; font-size:11px; color:var(--muted); margin-bottom:5px; }
+.comp-bar { height:7px; background:#1a1a1a; border-radius:4px; overflow:hidden; border:1px solid var(--border); }
+.comp-fill { height:100%; border-radius:4px; transition:width 0.5s ease, background 0.3s; }
+
+.log-feed { display:flex; flex-direction:column; gap:4px; max-height:160px; overflow-y:auto; }
+.log-item { display:flex; align-items:center; justify-content:space-between; padding:6px 9px; background:#1a1a1a; border-radius:5px; border-left:3px solid; animation:slideIn 0.2s ease; font-family:'DM Mono',monospace; font-size:11px; }
+.log-item.ok{border-color:var(--ok)} .log-item.low{border-color:var(--low)} .log-item.high{border-color:var(--high)}
+.log-time { color:var(--muted); font-size:10px; flex-shrink:0; margin-left:8px; }
+
+.admin-btn { margin:12px 14px; padding:9px; background:transparent; border:1px dashed var(--border); border-radius:6px; color:var(--muted); font-size:10px; font-family:'DM Mono',monospace; letter-spacing:2px; cursor:pointer; width:calc(100% - 28px); transition:all 0.15s; }
+.admin-btn:hover { border-color:rgba(255,255,255,0.2); color:rgba(255,255,255,0.4); }
+
+/* ══ MODALS ══ */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(10px); z-index:100; align-items:center; justify-content:center; padding:16px; }
+.modal-overlay.open { display:flex; }
+.modal-box { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:28px; width:100%; max-width:500px; max-height:88vh; overflow-y:auto; }
+.modal-title { font-family:'Bebas Neue',sans-serif; font-size:24px; letter-spacing:2px; margin-bottom:5px; }
+.modal-sub { font-size:13px; color:var(--muted); margin-bottom:20px; }
+.prod-list { display:flex; flex-direction:column; gap:7px; margin-bottom:18px; }
+.prod-row { display:flex; align-items:center; gap:12px; background:#1a1a1a; border:1px solid var(--border); border-radius:8px; padding:11px 14px; cursor:pointer; transition:all 0.15s; }
+.prod-row:hover { border-color:rgba(255,255,255,0.2); }
+.prod-row.sel { border-color:var(--ok); background:var(--ok-dim); }
+.confirm-btn { width:100%; padding:13px; background:var(--ok); color:#000; border:none; border-radius:8px; font-family:'Bebas Neue',sans-serif; font-size:18px; letter-spacing:3px; cursor:pointer; }
+
+/* admin table */
+.adm-row { display:grid; grid-template-columns:36px 1fr 72px 72px 56px; gap:7px; align-items:center; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
+.adm-input { background:#111; border:1px solid #2a2a2a; border-radius:5px; color:var(--text); padding:6px 8px; font-family:'DM Mono',monospace; font-size:13px; width:100%; }
+.adm-input:focus { outline:none; border-color:var(--ok); }
+.del-btn { background:var(--high-dim); border:1px solid var(--high); color:var(--high); border-radius:4px; padding:5px 6px; cursor:pointer; font-size:10px; font-family:'DM Mono',monospace; }
+.save-btn { width:100%; padding:12px; background:var(--ok); color:#000; border:none; border-radius:8px; font-family:'Bebas Neue',sans-serif; font-size:17px; letter-spacing:3px; cursor:pointer; margin-top:16px; }
+
+/* pw modal */
+.pw-box { max-width:360px; text-align:center; }
+.pw-box h3 { font-family:'Bebas Neue',sans-serif; font-size:24px; letter-spacing:2px; margin-bottom:8px; }
+.pw-box p { font-size:13px; color:var(--muted); margin-bottom:18px; }
+.pw-ok { width:100%; padding:11px; background:var(--ok); color:#000; border:none; border-radius:8px; font-family:'Bebas Neue',sans-serif; font-size:17px; letter-spacing:2px; cursor:pointer; }
+.pw-cancel { width:100%; margin-top:7px; padding:9px; background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:8px; font-family:'DM Mono',monospace; font-size:13px; cursor:pointer; }
+.pw-err { color:var(--high); font-size:12px; font-family:'DM Mono',monospace; margin-top:5px; display:none; }
+</style>
+</head>
+<body>
+
+<!-- ══ SETUP ══ -->
+<div class="screen active" id="setupScreen">
+  <div class="card">
+    <div class="logo">PortionCheck Pro</div>
+    <div class="tagline">Contrôle grammage · Restauration rapide · Claude Vision AI</div>
+
+    <div class="step">
+      <div class="step-label"><span class="step-num">1</span>Clé API Anthropic</div>
+      <input type="password" id="apiKeyInput" placeholder="sk-ant-api03-..." autocomplete="off" oninput="clearErr()">
+      <div class="api-hint">→ <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:rgba(0,230,118,0.7)">console.anthropic.com</a> · Commence par <code>sk-ant-</code></div>
+    </div>
+
+    <div class="step">
+      <div class="step-label"><span class="step-num">2</span>Mot de passe gérant</div>
+      <input type="password" id="setupPw" placeholder="Minimum 4 caractères" oninput="clearErr()">
+    </div>
+
+    <div class="step">
+      <div class="step-label"><span class="step-num">3</span>Fréquence d'analyse</div>
+      <select id="setupFreq">
+        <option value="4000">Toutes les 4 secondes</option>
+        <option value="6000" selected>Toutes les 6 secondes (recommandé)</option>
+        <option value="10000">Toutes les 10 secondes</option>
+      </select>
+    </div>
+
+    <button class="launch-btn" id="launchBtn" onclick="launch()">LANCER L'APPLICATION →</button>
+    <div class="err-box" id="setupErr"></div>
+  </div>
+</div>
+
+<!-- ══ MAIN ══ -->
+<div class="screen" id="mainScreen">
+
+  <!-- Camera -->
+  <div class="cam-col">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+
+    <div class="pill" id="livePill">
+      <div class="dot-live"></div>
+      <span id="liveLabel">CONNEXION...</span>
+    </div>
+    <div class="pill" id="analyzingPill">
+      <div class="mini-spin"></div>
+      ANALYSE IA...
+    </div>
+
+    <div class="corner tl" id="cTL"></div>
+    <div class="corner tr" id="cTR"></div>
+    <div class="corner bl" id="cBL"></div>
+    <div class="corner br" id="cBR"></div>
+    <div class="scan-beam" id="scanBeam"></div>
+
+    <div class="big-status" id="bigStatus" style="border-color:#555;background:rgba(10,10,10,0.8)">
+      <div class="bs-icon" id="bsIcon" style="color:#555">📷</div>
+      <div class="bs-center">
+        <div class="bs-tag">STATUT</div>
+        <div class="bs-msg" id="bsMsg" style="color:#555">INITIALISATION...</div>
+      </div>
+      <div class="bs-right">
+        <div class="bs-wlabel">DÉTECTÉ</div>
+        <div class="bs-wval" id="bsVal" style="color:#555">—<span class="bs-wunit">g</span></div>
+        <div class="bs-conf" id="bsConf"></div>
+      </div>
+      <div class="cnt-bar"><div class="cnt-fill" id="cntFill" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <div class="sb">
+      <div class="sb-title">Statut IA</div>
+      <div class="ai-card">
+        <div class="ai-dot pending" id="aiDot"></div>
+        <div>
+          <div class="ai-lbl" id="aiLbl">Démarrage...</div>
+          <div class="ai-sub" id="aiSub">Claude Vision · claude-opus-4-6</div>
+        </div>
+      </div>
+      <div class="freq-row">
+        <span class="freq-label">Prochain scan dans</span>
+        <span class="freq-val" id="nextIn">—</span>
+      </div>
+      <button class="sbtn primary" id="manualBtn" onclick="manualTrigger()" disabled>⚡ ANALYSER MAINTENANT</button>
+    </div>
+
+    <div class="sb">
+      <div class="sb-title">Produit en cours</div>
+      <div class="prod-name" id="sbName">🥙 Kebab Normal</div>
+      <div class="prod-target" id="sbTarget">150g</div>
+      <div class="prod-tol" id="sbTol">Tolérance ±15g · Zone OK : 135–165g</div>
+      <button class="sbtn" onclick="openModal('productModal')">↕ CHANGER DE PRODUIT</button>
+    </div>
+
+    <div class="sb">
+      <div class="sb-title">Jaugeage</div>
+      <div style="display:flex;justify-content:space-between;font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);margin-bottom:7px">
+        <span>0g</span><span id="gaugeMax">300g</span>
+      </div>
+      <div class="gauge-track">
+        <div class="gauge-zone" id="gaugeZone"></div>
+        <div class="gauge-tick" id="gaugeTick"></div>
+        <div class="gauge-fill" id="gaugeFill" style="width:0%"></div>
+      </div>
+      <div class="gauge-axis"><span>Insuffisant</span><span>Zone OK</span><span>Excessif</span></div>
+      <div class="zone-row">
+        <div class="zone-card low" id="zcLow"><div class="zc-l">INSUFFISANT</div><div class="zc-v" id="zcLowV">—</div></div>
+        <div class="zone-card ok"  id="zcOk" ><div class="zc-l">✓ OK</div><div class="zc-v" id="zcOkV">—</div></div>
+        <div class="zone-card high" id="zcHigh"><div class="zc-l">EXCESSIF</div><div class="zc-v" id="zcHighV">—</div></div>
+      </div>
+    </div>
+
+    <div class="sb">
+      <div class="sb-title">Session</div>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="stat-l">ANALYSES</div><div class="stat-v" id="stTotal">0</div></div>
+        <div class="stat-box"><div class="stat-l">CONFORMES</div><div class="stat-v ok" id="stOk">0</div></div>
+        <div class="stat-box"><div class="stat-l">INSUFFISANT</div><div class="stat-v low" id="stLow">0</div></div>
+        <div class="stat-box"><div class="stat-l">EXCESSIF</div><div class="stat-v high" id="stHigh">0</div></div>
+      </div>
+      <div class="comp-bar-wrap" id="compWrap" style="display:none">
+        <div class="comp-label"><span>Taux de conformité</span><span id="compPct">—</span></div>
+        <div class="comp-bar"><div class="comp-fill" id="compFill" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div class="sb" style="flex:1">
+      <div class="sb-title">Historique</div>
+      <div class="log-feed" id="logFeed">
+        <div style="text-align:center;padding:16px 0;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">En attente de la première analyse</div>
+      </div>
+    </div>
+
+    <button class="admin-btn" onclick="openModal('pwModal')">⚙ ACCÈS GÉRANT</button>
+  </div>
+</div>
+
+<!-- ══ MODALS ══ -->
+<div class="modal-overlay" id="productModal">
+  <div class="modal-box">
+    <div class="modal-title">Choisir le produit</div>
+    <div class="modal-sub">Les seuils s'appliquent immédiatement.</div>
+    <div class="prod-list" id="prodList"></div>
+    <button class="confirm-btn" onclick="confirmProduct()">CONFIRMER →</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="pwModal">
+  <div class="modal-box pw-box">
+    <h3>ACCÈS GÉRANT</h3>
+    <p>Entrez le mot de passe administrateur.</p>
+    <input type="password" id="pwInput" placeholder="••••••" style="margin-bottom:8px" onkeydown="if(event.key==='Enter')checkPw()">
+    <div class="pw-err" id="pwErr">Mot de passe incorrect</div>
+    <button class="pw-ok" onclick="checkPw()">VALIDER</button>
+    <button class="pw-cancel" onclick="closeModal('pwModal')">Annuler</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="adminModal">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-title">⚙ Configuration Gérant</div>
+    <div class="modal-sub">Modifiez les produits, grammages et tolérances.</div>
+    <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--muted);display:grid;grid-template-columns:36px 1fr 72px 72px 56px;gap:7px;padding:0 0 6px;border-bottom:1px solid var(--border);margin-bottom:6px">
+      <span></span><span>PRODUIT</span><span>CIBLE g</span><span>TOL ±g</span><span></span>
+    </div>
+    <div id="adminRows"></div>
+    <div class="sb-title" style="margin-top:16px;margin-bottom:8px">AJOUTER UN PRODUIT</div>
+    <div style="display:grid;grid-template-columns:44px 1fr 72px 72px auto;gap:7px;align-items:center">
+      <input class="adm-input" id="nEmoji" placeholder="🥩" maxlength="2">
+      <input class="adm-input" id="nName" placeholder="Nom">
+      <input class="adm-input" type="number" id="nTarget" placeholder="150">
+      <input class="adm-input" type="number" id="nTol" placeholder="15">
+      <button onclick="addProduct()" style="padding:7px 10px;background:var(--ok);color:#000;border:none;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;white-space:nowrap">+ ADD</button>
+    </div>
+    <button class="save-btn" onclick="saveAdmin()">ENREGISTRER ET FERMER</button>
+  </div>
+</div>
+
+<script>
+// ═══ STATE ═══
+let API_KEY = '';
+let ADMIN_PW = '';
+let FREQ = 6000;
+let isAnalyzing = false;
+let cameraReady = false;
+let cntElapsed = 0;
+let cntTimer = null;
+let currentProdIdx = 1;
+let pendingProdIdx = 1;
+let firstLog = true;
+let stats = { total:0, ok:0, low:0, high:0 };
+let adminTemp = [];
+
+let products = [
+  { emoji:'🥙', name:'Kebab Mini',   target:120, tol:12 },
+  { emoji:'🥙', name:'Kebab Normal', target:150, tol:15 },
+  { emoji:'🥙', name:'Kebab Large',  target:200, tol:18 },
+  { emoji:'🫓', name:'Grec',         target:100, tol:10 },
+  { emoji:'🧆', name:'Falafel',      target: 90, tol:10 },
+  { emoji:'🌯', name:'Wrap XXL',     target:180, tol:18 },
+];
+
+const COL = { idle:'#555', ok:'#00e676', low:'#ffab00', high:'#ff3d3d' };
+const BG  = { idle:'rgba(10,10,10,0.8)', ok:'rgba(0,230,118,0.15)', low:'rgba(255,171,0,0.15)', high:'rgba(255,61,61,0.15)' };
+const CONF_LABEL = { high:'Fiabilité haute', medium:'Fiabilité moyenne', low:'Fiabilité faible' };
+
+function getStatus(w, p) {
+  if (w === 0) return 'idle';
+  if (w < p.target - p.tol) return 'low';
+  if (w > p.target + p.tol) return 'high';
+  return 'ok';
+}
+
+// ═══ SETUP ═══
+function clearErr() {
+  document.getElementById('setupErr').style.display = 'none';
+  document.getElementById('apiKeyInput').classList.remove('err');
+  document.getElementById('setupPw').classList.remove('err');
+}
+function showErr(msg) {
+  const el = document.getElementById('setupErr');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+async function launch() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  const pw  = document.getElementById('setupPw').value.trim();
+  let ok = true;
+  if (!key.startsWith('sk-ant-')) { document.getElementById('apiKeyInput').classList.add('err'); showErr('❌ Clé API invalide — doit commencer par sk-ant-'); ok = false; }
+  if (pw.length < 4) { document.getElementById('setupPw').classList.add('err'); if(ok) showErr('❌ Mot de passe minimum 4 caractères'); ok = false; }
+  if (!ok) return;
+
+  const btn = document.getElementById('launchBtn');
+  btn.disabled = true;
+  btn.textContent = 'VÉRIFICATION CLÉ API...';
+
+  try {
+    const r = await fetch('/api/test-key', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ apiKey: key })
+    });
+    const data = await r.json();
+    if (!data.valid) { showErr('❌ Clé API refusée : ' + (data.error || 'invalide')); btn.disabled=false; btn.textContent='LANCER L\'APPLICATION →'; return; }
+  } catch(e) {
+    showErr('❌ Impossible de joindre le serveur. Vérifiez votre connexion.');
+    btn.disabled=false; btn.textContent='LANCER L\'APPLICATION →'; return;
+  }
+
+  API_KEY = key;
+  ADMIN_PW = pw;
+  FREQ = parseInt(document.getElementById('setupFreq').value);
+
+  document.getElementById('setupScreen').classList.remove('active');
+  document.getElementById('mainScreen').classList.add('active');
+  updateProdUI();
+  startCamera();
+}
+
+// ═══ CAMERA ═══
+async function startCamera() {
+  setAI('pending','Accès caméra...','En attente des permissions');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode:'environment', width:{ideal:1280}, height:{ideal:720} }
+    });
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    video.onloadedmetadata = () => {
+      video.play();
+      cameraReady = true;
+      document.getElementById('liveLabel').textContent = 'EN DIRECT';
+      document.getElementById('manualBtn').disabled = false;
+      setAI('ok','Système actif',`Analyse toutes les ${FREQ/1000}s`);
+      renderStatus(0);
+      startCountdown();
+    };
+  } catch(e) {
+    document.getElementById('liveLabel').textContent = 'ERREUR CAMÉRA';
+    setAI('err','Caméra inaccessible','Vérifiez les permissions Safari');
+    document.getElementById('bsMsg').textContent = 'ERREUR CAMÉRA';
+  }
+}
+
+// ═══ AI STATUS ═══
+function setAI(type, label, sub) {
+  document.getElementById('aiDot').className = 'ai-dot ' + type;
+  document.getElementById('aiLbl').textContent = label;
+  document.getElementById('aiSub').textContent = sub;
+}
+
+// ═══ COUNTDOWN ═══
+function startCountdown() {
+  clearInterval(cntTimer);
+  cntElapsed = 0;
+  cntTimer = setInterval(() => {
+    if (isAnalyzing) return;
+    cntElapsed += 100;
+    const pct = Math.min(cntElapsed / FREQ, 1);
+    document.getElementById('cntFill').style.width = (pct*100) + '%';
+    const rem = Math.max(0, Math.ceil((FREQ - cntElapsed)/1000));
+    document.getElementById('nextIn').textContent = rem + 's';
+    if (cntElapsed >= FREQ) { cntElapsed = 0; runAnalysis(); }
+  }, 100);
+}
+
+// ═══ ANALYSIS ═══
+async function runAnalysis() {
+  if (isAnalyzing || !cameraReady) return;
+  isAnalyzing = true;
+  document.getElementById('analyzingPill').classList.add('show');
+  document.getElementById('manualBtn').disabled = true;
+  document.getElementById('nextIn').textContent = '...';
+  setAI('pending','Analyse en cours...','Claude Vision traite l\'image');
+
+  try {
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    canvas.width  = video.videoWidth  || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const b64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+    const prod = products[currentProdIdx];
+    const resp = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        apiKey: API_KEY,
+        imageB64: b64,
+        productName: prod.name,
+        productTarget: prod.target,
+        productTol: prod.tol
+      })
+    });
+
+    if (!resp.ok) {
+      const e = await resp.json().catch(() => ({}));
+      throw new Error(e.error || `HTTP ${resp.status}`);
+    }
+
+    const result = await resp.json();
+    const w = Math.max(0, Math.round(result.weight));
+    const conf = result.confidence || 'medium';
+    const note = result.note || '';
+
+    renderStatus(w, true, conf, note);
+    setAI('ok','Analyse terminée',`Prochain scan dans ${FREQ/1000}s`);
+
+  } catch(e) {
+    console.error(e);
+    setAI('err','Erreur d\'analyse', e.message.slice(0,55));
+    setTimeout(() => setAI('ok','Reprise auto...',`Prochain scan dans ${FREQ/1000}s`), 3000);
+  }
+
+  document.getElementById('analyzingPill').classList.remove('show');
+  document.getElementById('manualBtn').disabled = false;
+  isAnalyzing = false;
+}
+
+function manualTrigger() { cntElapsed = 0; document.getElementById('cntFill').style.width='0%'; runAnalysis(); }
+
+// ═══ RENDER ═══
+function renderStatus(weight, doLog=false, conf='', note='') {
+  const prod = products[currentProdIdx];
+  const status = getStatus(weight, prod);
+  const col = COL[status];
+
+  document.getElementById('bigStatus').style.background = BG[status];
+  document.getElementById('bigStatus').style.borderColor = col;
+  ['cTL','cTR','cBL','cBR'].forEach(id => document.getElementById(id).style.borderColor = col);
+  document.getElementById('scanBeam').style.color = col;
+  document.getElementById('cntFill').style.background = status==='idle' ? '#00e676' : col;
+
+  const msgs = {
+    idle: { icon:'📷', msg:'PRÊT' },
+    ok:   { icon:'✅', msg:'BONNE DOSE' },
+    low:  { icon:'⬆️', msg:`RAJOUTER ${Math.max(0, prod.target-weight)}g` },
+    high: { icon:'⬇️', msg:`RETIRER ${weight-prod.target}g` },
+  };
+  const m = msgs[status];
+  const bsI = document.getElementById('bsIcon');
+  const bsM = document.getElementById('bsMsg');
+  const bsV = document.getElementById('bsVal');
+  bsI.textContent = m.icon; bsI.style.color = col;
+  bsM.textContent = m.msg; bsM.style.color = col;
+  bsV.innerHTML   = weight===0 ? `—<span class="bs-wunit">g</span>` : `${weight}<span class="bs-wunit">g</span>`;
+  bsV.style.color = col;
+  document.getElementById('bsConf').textContent = weight>0 ? (CONF_LABEL[conf]||'') : '';
+
+  const maxG = prod.target*2;
+  document.getElementById('gaugeFill').style.width = Math.min((weight/maxG)*100,100)+'%';
+  document.getElementById('gaugeFill').style.background = col;
+  ['zcLow','zcOk','zcHigh'].forEach(id => document.getElementById(id).classList.remove('active'));
+  if (status!=='idle') document.getElementById({low:'zcLow',ok:'zcOk',high:'zcHigh'}[status]).classList.add('active');
+
+  if (doLog && weight>0) {
+    stats.total++; stats[status]++;
+    document.getElementById('stTotal').textContent = stats.total;
+    document.getElementById('stOk').textContent   = stats.ok;
+    document.getElementById('stLow').textContent  = stats.low;
+    document.getElementById('stHigh').textContent = stats.high;
+    const cp = Math.round(stats.ok/stats.total*100);
+    document.getElementById('compWrap').style.display = 'block';
+    document.getElementById('compPct').textContent  = cp+'%';
+    document.getElementById('compPct').style.color  = cp>=80?'#00e676':cp>=60?'#ffab00':'#ff3d3d';
+    document.getElementById('compFill').style.width = cp+'%';
+    document.getElementById('compFill').style.background = cp>=80?'#00e676':cp>=60?'#ffab00':'#ff3d3d';
+    addLog(weight, status, note);
+  }
+}
+
+function addLog(weight, status, note) {
+  const feed = document.getElementById('logFeed');
+  if (firstLog) { feed.innerHTML=''; firstLog=false; }
+  const t = new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const ll = {ok:'✓ OK',low:'↑ INSUFF.',high:'↓ EXCÈS'}[status];
+  const el = document.createElement('div');
+  el.className = 'log-item '+status;
+  el.innerHTML = `<span>${ll} — ${weight}g${note?' · '+note:''}</span><span class="log-time">${t}</span>`;
+  feed.insertBefore(el, feed.firstChild);
+  if (feed.children.length>30) feed.removeChild(feed.lastChild);
+}
+
+// ═══ PRODUCT UI ═══
+function updateProdUI() {
+  const prod = products[currentProdIdx];
+  const maxG = prod.target*2;
+  document.getElementById('sbName').textContent   = prod.emoji+' '+prod.name;
+  document.getElementById('sbTarget').textContent = prod.target+'g';
+  document.getElementById('sbTol').textContent    = `Tolérance ±${prod.tol}g · Zone OK : ${prod.target-prod.tol}–${prod.target+prod.tol}g`;
+  document.getElementById('gaugeMax').textContent = maxG+'g';
+  document.getElementById('gaugeZone').style.left  = ((prod.target-prod.tol)/maxG*100)+'%';
+  document.getElementById('gaugeZone').style.width = (prod.tol*2/maxG*100)+'%';
+  document.getElementById('gaugeTick').style.left  = (prod.target/maxG*100)+'%';
+  document.getElementById('zcLowV').textContent    = '<'+(prod.target-prod.tol)+'g';
+  document.getElementById('zcOkV').textContent     = (prod.target-prod.tol)+'–'+(prod.target+prod.tol)+'g';
+  document.getElementById('zcHighV').textContent   = '>'+(prod.target+prod.tol)+'g';
+}
+
+function openProductPicker() {
+  pendingProdIdx = currentProdIdx;
+  const list = document.getElementById('prodList');
+  list.innerHTML = '';
+  products.forEach((p,i) => {
+    const row = document.createElement('div');
+    row.className = 'prod-row'+(i===pendingProdIdx?' sel':'');
+    row.innerHTML = `<span style="font-size:24px">${p.emoji}</span>
+      <div style="flex:1"><div style="font-weight:700;font-size:14px">${p.name}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:10px;color:#4a4a4a;margin-top:2px">±${p.tol}g · ${p.target-p.tol}–${p.target+p.tol}g</div></div>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:#00e676">${p.target}g</span>`;
+    row.onclick = () => { document.querySelectorAll('.prod-row').forEach(r=>r.classList.remove('sel')); row.classList.add('sel'); pendingProdIdx=i; };
+    list.appendChild(row);
+  });
+  openModal('productModal');
+}
+function confirmProduct() { currentProdIdx=pendingProdIdx; updateProdUI(); renderStatus(0); closeModal('productModal'); }
+
+// ═══ ADMIN ═══
+function checkPw() {
+  if (document.getElementById('pwInput').value===ADMIN_PW) {
+    document.getElementById('pwInput').value=''; document.getElementById('pwErr').style.display='none';
+    closeModal('pwModal'); openAdmin();
+  } else { document.getElementById('pwErr').style.display='block'; }
+}
+function openAdmin() {
+  adminTemp = products.map(p=>({...p}));
+  renderAdminRows();
+  openModal('adminModal');
+}
+function renderAdminRows() {
+  const cont = document.getElementById('adminRows');
+  cont.innerHTML = '';
+  adminTemp.forEach((p,i) => {
+    const row = document.createElement('div');
+    row.className = 'adm-row';
+    row.innerHTML = `<span style="font-size:18px;text-align:center">${p.emoji}</span>
+      <span style="font-size:13px;font-weight:600">${p.name}</span>
+      <input class="adm-input" type="number" value="${p.target}" onchange="adminTemp[${i}].target=parseInt(this.value)||0">
+      <input class="adm-input" type="number" value="${p.tol}"    onchange="adminTemp[${i}].tol=parseInt(this.value)||0">
+      <button class="del-btn" onclick="adminTemp.splice(${i},1);renderAdminRows()">SUP</button>`;
+    cont.appendChild(row);
+  });
+}
+function addProduct() {
+  const emoji=document.getElementById('nEmoji').value.trim()||'🥩';
+  const name=document.getElementById('nName').value.trim();
+  const target=parseInt(document.getElementById('nTarget').value);
+  const tol=parseInt(document.getElementById('nTol').value);
+  if(!name||isNaN(target)||isNaN(tol)) return;
+  adminTemp.push({emoji,name,target,tol});
+  ['nEmoji','nName','nTarget','nTol'].forEach(id=>document.getElementById(id).value='');
+  renderAdminRows();
+}
+function saveAdmin() {
+  products = adminTemp.filter(p=>p.name&&p.target>0);
+  if(currentProdIdx>=products.length) currentProdIdx=0;
+  updateProdUI(); renderStatus(0); closeModal('adminModal');
+}
+
+// ═══ MODALS ═══
+function openModal(id) {
+  if(id==='productModal') openProductPicker();
+  else document.getElementById(id).classList.add('open');
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el=>{
+  el.addEventListener('click', e=>{ if(e.target===el) closeModal(el.id); });
+});
+</script>
+</body>
+</html>
